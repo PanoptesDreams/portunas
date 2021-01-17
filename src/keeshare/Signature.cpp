@@ -141,13 +141,17 @@ struct RSASigner
         }
         sexp[S] = gcry_sexp_find_token(sexp[Sig], "s", 1);
         mpi[S] = gcry_sexp_nth_mpi(sexp[S], 1, GCRYMPI_FMT_USG);
-        Tools::Buffer buffer;
-        rc = gcry_mpi_aprint(GCRYMPI_FMT_STD, &buffer.raw, &buffer.size, mpi[S]);
+        unsigned char* buffer = nullptr;
+        size_t size = 0;
+        rc = gcry_mpi_aprint(GCRYMPI_FMT_STD, &buffer, &size, mpi[S]);
         if (rc != GPG_ERR_NO_ERROR) {
+            free(buffer);
             raiseError();
             return QString();
         }
-        return QString("rsa|%1").arg(QString::fromLatin1(buffer.content().toHex()));
+        auto hex = QByteArray(reinterpret_cast<char*>(buffer), size).toHex();
+        free(buffer);
+        return QString("rsa|%1").arg(QString::fromLatin1(hex));
     }
 
     bool verify(const QByteArray& data, const OpenSSHKey& key, const QString& signature)

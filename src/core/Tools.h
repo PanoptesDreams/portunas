@@ -80,18 +80,6 @@ namespace Tools
         }
     };
 
-    struct Buffer
-    {
-        unsigned char* raw;
-        size_t size;
-
-        Buffer();
-        ~Buffer();
-
-        void clear();
-        QByteArray content() const;
-    };
-
     inline int qtRuntimeVersion()
     {
         // Cache the result since the Qt version can't change during

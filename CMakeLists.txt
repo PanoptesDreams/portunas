@@ -250,6 +250,7 @@ if(WITH_APP_BUNDLE)
 endif()
 
 add_gcc_compiler_flags("-fno-common")
+add_gcc_compiler_flags("-fopenmp")
 add_gcc_compiler_flags("-Wall -Wextra -Wundef -Wpointer-arith -Wno-long-long")
 add_gcc_compiler_flags("-Wformat=2 -Wmissing-format-attribute")
 add_gcc_compiler_flags("-fvisibility=hidden")
@@ -269,7 +270,6 @@ else()
 endif()
 endif()
 
-add_gcc_compiler_cxxflags("-fno-exceptions -fno-rtti")
 add_gcc_compiler_cxxflags("-Wnon-virtual-dtor -Wold-style-cast -Woverloaded-virtual")
 add_gcc_compiler_cflags("-Wchar-subscripts -Wwrite-strings")
 
@@ -441,7 +441,7 @@ set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_NONE QT_NO_DEBUG)
 
 find_package(LibGPGError REQUIRED)
 find_package(Gcrypt 1.7.0 REQUIRED)
-find_package(Argon2 REQUIRED)
+find_package(Botan2 REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(QREncode REQUIRED)
 find_package(sodium 1.0.12 REQUIRED)
@@ -452,7 +452,7 @@ if(ZLIB_VERSION_STRING VERSION_LESS "1.2.0")
     message(FATAL_ERROR "zlib 1.2.0 or higher is required to use the gzip format")
 endif()
 
-include_directories(SYSTEM ${ARGON2_INCLUDE_DIR} ${sodium_INCLUDE_DIR})
+include_directories(SYSTEM ${sodium_INCLUDE_DIR} ${BOTAN2_INCLUDE_DIR})
 
 # Optional
 if(WITH_XC_YUBIKEY)

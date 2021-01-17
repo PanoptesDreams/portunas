@@ -19,9 +19,10 @@
 #ifndef KEEPASSXC_BINARYSTREAM_H
 #define KEEPASSXC_BINARYSTREAM_H
 
-#include <QBuffer>
-#include <QIODevice>
 #include <QObject>
+
+class QIODevice;
+class QDataStream;
 
 class BinaryStream : QObject
 {
@@ -30,11 +31,9 @@ class BinaryStream : QObject
 public:
     explicit BinaryStream(QIODevice* device);
     explicit BinaryStream(QByteArray* ba, QObject* parent = nullptr);
-    ~BinaryStream() override;
+    ~BinaryStream() override = default;
 
     const QString errorString() const;
-    QIODevice* device() const;
-    void setTimeout(int timeout);
 
     bool read(QByteArray& ba);
     bool read(quint32& i);
@@ -52,15 +51,8 @@ public:
 
     bool flush();
 
-protected:
-    bool read(char* ptr, qint64 len);
-    bool write(const char* ptr, qint64 len);
-
 private:
-    int m_timeout;
-    QString m_error;
-    QIODevice* m_device;
-    QScopedPointer<QBuffer> m_buffer;
+    QScopedPointer<QDataStream> m_stream;
 };
 
 #endif // KEEPASSXC_BINARYSTREAM_H

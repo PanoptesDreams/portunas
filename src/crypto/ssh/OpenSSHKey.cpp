@@ -27,6 +27,7 @@
 #include <QRegularExpression>
 #include <QStringList>
 
+#include <botan/pwdhash.h>
 #include <gcrypt.h>
 
 const QString OpenSSHKey::TYPE_DSA_PRIVATE = "DSA PRIVATE KEY";
@@ -69,9 +70,6 @@ namespace
         return buffer;
     }
 } // namespace
-
-// bcrypt_pbkdf.cpp
-int bcrypt_pbkdf(const QByteArray& pass, const QByteArray& salt, QByteArray& key, quint32 rounds);
 
 OpenSSHKey OpenSSHKey::generate(bool secure)
 {
@@ -132,70 +130,90 @@ OpenSSHKey OpenSSHKey::generate(bool secure)
 
     QList<QByteArray> publicParts;
     QList<QByteArray> privateParts;
-    Tools::Buffer buffer;
+    unsigned char* buffer = nullptr;
+    size_t size = 0;
     gcry_mpi_format format = GCRYMPI_FMT_USG;
-    rc = gcry_mpi_aprint(format, &buffer.raw, &buffer.size, mpi[Private_N]);
+    rc = gcry_mpi_aprint(format, &buffer, &size, mpi[Private_N]);
+    if (rc != GPG_ERR_NO_ERROR) {
+        free(buffer);
+        qWarning() << "Could not extract private key part" << gcry_err_code(rc);
+        return OpenSSHKey();
+    }
+    privateParts << QByteArray(reinterpret_cast<char*>(buffer), size);
+
+    free(buffer);
+    buffer = nullptr;
+
+    rc = gcry_mpi_aprint(format, &buffer, &size, mpi[Private_E]);
     if (rc != GPG_ERR_NO_ERROR) {
         qWarning() << "Could not extract private key part" << gcry_err_code(rc);
         return OpenSSHKey();
     }
-    privateParts << buffer.content();
+    privateParts << QByteArray(reinterpret_cast<char*>(buffer), size);
 
-    buffer.clear();
-    rc = gcry_mpi_aprint(format, &buffer.raw, &buffer.size, mpi[Private_E]);
+    free(buffer);
+    buffer = nullptr;
+
+    rc = gcry_mpi_aprint(format, &buffer, &size, mpi[Private_D]);
     if (rc != GPG_ERR_NO_ERROR) {
         qWarning() << "Could not extract private key part" << gcry_err_code(rc);
         return OpenSSHKey();
     }
-    privateParts << buffer.content();
+    privateParts << QByteArray(reinterpret_cast<char*>(buffer), size);
 
-    buffer.clear();
-    rc = gcry_mpi_aprint(format, &buffer.raw, &buffer.size, mpi[Private_D]);
+    free(buffer);
+    buffer = nullptr;
+
+    rc = gcry_mpi_aprint(format, &buffer, &size, mpi[Private_U]);
     if (rc != GPG_ERR_NO_ERROR) {
         qWarning() << "Could not extract private key part" << gcry_err_code(rc);
         return OpenSSHKey();
     }
-    privateParts << buffer.content();
+    privateParts << QByteArray(reinterpret_cast<char*>(buffer), size);
 
-    buffer.clear();
-    rc = gcry_mpi_aprint(format, &buffer.raw, &buffer.size, mpi[Private_U]);
+    free(buffer);
+    buffer = nullptr;
+
+    rc = gcry_mpi_aprint(format, &buffer, &size, mpi[Private_P]);
     if (rc != GPG_ERR_NO_ERROR) {
         qWarning() << "Could not extract private key part" << gcry_err_code(rc);
         return OpenSSHKey();
     }
-    privateParts << buffer.content();
+    privateParts << QByteArray(reinterpret_cast<char*>(buffer), size);
 
-    buffer.clear();
-    rc = gcry_mpi_aprint(format, &buffer.raw, &buffer.size, mpi[Private_P]);
+    free(buffer);
+    buffer = nullptr;
+
+    rc = gcry_mpi_aprint(format, &buffer, &size, mpi[Private_Q]);
     if (rc != GPG_ERR_NO_ERROR) {
         qWarning() << "Could not extract private key part" << gcry_err_code(rc);
         return OpenSSHKey();
     }
-    privateParts << buffer.content();
+    privateParts << QByteArray(reinterpret_cast<char*>(buffer), size);
 
-    buffer.clear();
-    rc = gcry_mpi_aprint(format, &buffer.raw, &buffer.size, mpi[Private_Q]);
-    if (rc != GPG_ERR_NO_ERROR) {
-        qWarning() << "Could not extract private key part" << gcry_err_code(rc);
-        return OpenSSHKey();
-    }
-    privateParts << buffer.content();
+    free(buffer);
+    buffer = nullptr;
 
-    buffer.clear();
-    rc = gcry_mpi_aprint(format, &buffer.raw, &buffer.size, mpi[Public_E]);
+    rc = gcry_mpi_aprint(format, &buffer, &size, mpi[Public_E]);
     if (rc != GPG_ERR_NO_ERROR) {
         qWarning() << "Could not extract public key part" << gcry_err_code(rc);
         return OpenSSHKey();
     }
-    publicParts << buffer.content();
+    publicParts << QByteArray(reinterpret_cast<char*>(buffer), size);
 
-    buffer.clear();
-    rc = gcry_mpi_aprint(format, &buffer.raw, &buffer.size, mpi[Public_N]);
+    free(buffer);
+    buffer = nullptr;
+
+    rc = gcry_mpi_aprint(format, &buffer, &size, mpi[Public_N]);
     if (rc != GPG_ERR_NO_ERROR) {
         qWarning() << "Could not extract public key part" << gcry_err_code(rc);
         return OpenSSHKey();
     }
-    publicParts << buffer.content();
+    publicParts << QByteArray(reinterpret_cast<char*>(buffer), size);
+
+    free(buffer);
+    buffer = nullptr;
+
     OpenSSHKey key;
     key.m_rawType = OpenSSHKey::TYPE_RSA_PRIVATE;
     key.setType("ssh-rsa");
@@ -508,7 +526,7 @@ bool OpenSSHKey::encrypted() const
 
 bool OpenSSHKey::openKey(const QString& passphrase)
 {
-    QScopedPointer<SymmetricCipher> cipher;
+    QScopedPointer<SymmetricCipher> cipher(new SymmetricCipher());
 
     if (!m_rawPrivateData.isEmpty()) {
         return true;
@@ -519,94 +537,89 @@ bool OpenSSHKey::openKey(const QString& passphrase)
         return false;
     }
 
-    if (m_cipherName.compare("aes-128-cbc", Qt::CaseInsensitive) == 0) {
-        cipher.reset(new SymmetricCipher(SymmetricCipher::Aes128, SymmetricCipher::Cbc, SymmetricCipher::Decrypt));
-    } else if (m_cipherName == "aes256-cbc" || m_cipherName.compare("aes-256-cbc", Qt::CaseInsensitive) == 0) {
-        cipher.reset(new SymmetricCipher(SymmetricCipher::Aes256, SymmetricCipher::Cbc, SymmetricCipher::Decrypt));
-    } else if (m_cipherName == "aes256-ctr" || m_cipherName.compare("aes-256-ctr", Qt::CaseInsensitive) == 0) {
-        cipher.reset(new SymmetricCipher(SymmetricCipher::Aes256, SymmetricCipher::Ctr, SymmetricCipher::Decrypt));
-    } else if (m_cipherName != "none") {
-        m_error = tr("Unknown cipher: %1").arg(m_cipherName);
-        return false;
-    }
+    QByteArray rawData = m_rawData;
 
-    if (m_kdfName == "bcrypt") {
-        if (!cipher) {
-            m_error = tr("Trying to run KDF without cipher");
-            return false;
-        }
-
-        if (passphrase.isEmpty()) {
-            m_error = tr("Passphrase is required to decrypt this key");
-            return false;
-        }
-
-        BinaryStream optionStream(&m_kdfOptions);
-
-        QByteArray salt;
-        quint32 rounds;
-
-        optionStream.readString(salt);
-        optionStream.read(rounds);
-
-        QByteArray decryptKey;
-        decryptKey.fill(0, cipher->keySize() + cipher->blockSize());
-
-        QByteArray phraseData = passphrase.toUtf8();
-        if (bcrypt_pbkdf(phraseData, salt, decryptKey, rounds) < 0) {
-            m_error = tr("Key derivation failed, key file corrupted?");
+    if (m_cipherName != "none") {
+        auto cipherMode = SymmetricCipher::stringToMode(m_cipherName);
+        if (cipherMode == SymmetricCipher::InvalidMode) {
+            m_error = tr("Unknown cipher: %1").arg(m_cipherName);
             return false;
         }
 
         QByteArray keyData, ivData;
-        keyData.setRawData(decryptKey.data(), cipher->keySize());
-        ivData.setRawData(decryptKey.data() + cipher->keySize(), cipher->blockSize());
 
-        cipher->init(keyData, ivData);
+        if (m_kdfName == "bcrypt") {
+            if (passphrase.isEmpty()) {
+                m_error = tr("Passphrase is required to decrypt this key");
+                return false;
+            }
 
-        if (!cipher->init(keyData, ivData)) {
-            m_error = cipher->errorString();
+            int keySize = cipher->keySize(cipherMode);
+            int blockSize = 16;
+
+            BinaryStream optionStream(&m_kdfOptions);
+
+            QByteArray salt;
+            quint32 rounds;
+
+            optionStream.readString(salt);
+            optionStream.read(rounds);
+
+            QByteArray decryptKey(keySize + blockSize, '\0');
+            try {
+                auto baPass = passphrase.toUtf8();
+                auto pwhash = Botan::PasswordHashFamily::create_or_throw("Bcrypt-PBKDF")->from_iterations(rounds);
+                pwhash->derive_key(reinterpret_cast<uint8_t*>(decryptKey.data()),
+                                   decryptKey.size(),
+                                   baPass.constData(),
+                                   baPass.size(),
+                                   reinterpret_cast<const uint8_t*>(salt.constData()),
+                                   salt.size());
+            } catch (std::exception& e) {
+                m_error = tr("Key derivation failed: %1").arg(e.what());
+                return false;
+            }
+
+            keyData = decryptKey.left(keySize);
+            ivData = decryptKey.right(blockSize);
+        } else if (m_kdfName == "md5") {
+            if (m_cipherIV.length() < 8) {
+                m_error = tr("Cipher IV is too short for MD5 kdf");
+                return false;
+            }
+
+            int keySize = cipher->keySize(cipherMode);
+
+            QByteArray mdBuf;
+            do {
+                QCryptographicHash hash(QCryptographicHash::Md5);
+                hash.addData(mdBuf);
+                hash.addData(passphrase.toUtf8());
+                hash.addData(m_cipherIV.data(), 8);
+                mdBuf = hash.result();
+                keyData.append(mdBuf);
+            } while (keyData.size() < keySize);
+
+            if (keyData.size() > keySize) {
+                // If our key size isn't a multiple of 16 (e.g. AES-192 or something),
+                // then we will need to truncate it.
+                keyData.resize(keySize);
+            }
+
+            ivData = m_cipherIV;
+        } else if (m_kdfName != "none") {
+            m_error = tr("Unknown KDF: %1").arg(m_kdfName);
             return false;
         }
-    } else if (m_kdfName == "md5") {
-        if (m_cipherIV.length() < 8) {
-            m_error = tr("Cipher IV is too short for MD5 kdf");
+
+        // Initialize the cipher using the processed key and iv data
+        if (!cipher->init(cipherMode, SymmetricCipher::Decrypt, keyData, ivData)) {
+            m_error = tr("Failed to initialize cipher: %1").arg(cipher->errorString());
             return false;
         }
-
-        QByteArray keyData;
-        QByteArray mdBuf;
-        do {
-            QCryptographicHash hash(QCryptographicHash::Md5);
-            hash.addData(mdBuf);
-            hash.addData(passphrase.toUtf8());
-            hash.addData(m_cipherIV.data(), 8);
-            mdBuf = hash.result();
-            keyData.append(mdBuf);
-        } while (keyData.size() < cipher->keySize());
-
-        if (keyData.size() > cipher->keySize()) {
-            // If our key size isn't a multiple of 16 (e.g. AES-192 or something),
-            // then we will need to truncate it.
-            keyData.resize(cipher->keySize());
-        }
-
-        if (!cipher->init(keyData, m_cipherIV)) {
-            m_error = cipher->errorString();
-            return false;
-        }
-    } else if (m_kdfName != "none") {
-        m_error = tr("Unknown KDF: %1").arg(m_kdfName);
-        return false;
-    }
-
-    QByteArray rawData = m_rawData;
-
-    if (cipher && cipher->isInitalized()) {
-        bool ok = false;
-        rawData = cipher->process(rawData, &ok);
-        if (!ok) {
-            m_error = tr("Decryption failed, wrong passphrase?");
+        // Decrypt the raw data, we do not use finish because padding is handled separately
+        if (!cipher->process(rawData)) {
+            m_error = tr("Decryption failed: %1").arg(cipher->errorString());
             return false;
         }
     }

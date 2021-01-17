@@ -54,13 +54,7 @@ add_executable(keepassxc-cli keepassxc-cli.cpp)
 target_link_libraries(keepassxc-cli
         ${GPGERROR_LIBRARIES}
         cli
-        keepassx_core
-        Qt5::Core
-        ${GCRYPT_LIBRARIES}
-        ${sodium_LIBRARY_RELEASE}
-        ${ARGON2_LIBRARIES}
-        ${ZLIB_LIBRARIES}
-        ${ZXCVBN_LIBRARIES})
+        keepassx_core)
 
 install(TARGETS keepassxc-cli
         BUNDLE DESTINATION . COMPONENT Runtime
@@ -94,8 +88,6 @@ if(APPLE AND WITH_APP_BUNDLE)
                                 "@executable_path/../Frameworks/QtSvg.framework/Versions/5/QtSvg"
                             -change /usr/local/opt/libgcrypt/lib/libgcrypt.20.dylib
                                 "@executable_path/../Frameworks/libgcrypt.20.dylib"
-                            -change /usr/local/opt/argon2/lib/libargon2.1.dylib
-                                "@executable_path/../Frameworks/libargon2.1.dylib"
                             -change /usr/local/opt/libgpg-error/lib/libgpg-error.0.dylib
                                 "@executable_path/../Frameworks/libgpg-error.0.dylib"
                             -change /usr/local/opt/libsodium/lib/libsodium.23.dylib

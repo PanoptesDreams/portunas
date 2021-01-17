@@ -68,7 +68,6 @@ set(keepassx_SOURCES
         crypto/CryptoHash.cpp
         crypto/Random.cpp
         crypto/SymmetricCipher.cpp
-        crypto/SymmetricCipherGcrypt.cpp
         crypto/kdf/Kdf.cpp
         crypto/kdf/AesKdf.cpp
         crypto/kdf/Argon2Kdf.cpp
@@ -327,7 +326,6 @@ target_link_libraries(keepassx_core
         ${sodium_LIBRARY_RELEASE}
         ${YUBIKEY_LIBRARIES}
         ${ZXCVBN_LIBRARIES}
-        ${ARGON2_LIBRARIES}
         ${ZLIB_LIBRARIES}
 	)
 
@@ -373,6 +371,7 @@ endif()
 
 add_executable(${PROGNAME} WIN32 ${keepassx_SOURCES_MAINEXE} ${WIN32_ProductVersionFiles})
 target_link_libraries(keepassx_core ${GCRYPT_LIBRARIES} ${GPGERROR_LIBRARIES})
+target_link_libraries(keepassx_core ${BOTAN2_LIBRARIES})
 target_link_libraries(${PROGNAME} keepassx_core)
 
 set_target_properties(${PROGNAME} PROPERTIES ENABLE_EXPORTS ON)

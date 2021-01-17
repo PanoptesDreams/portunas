@@ -178,8 +178,8 @@ namespace FdoSecrets
 
     QByteArray& DhIetf1024Sha256Aes128CbcPkcs7::padPkcs7(QByteArray& input, int blockSize)
     {
-        // blockSize must be a power of 2.
-        Q_ASSERT_X(blockSize > 0 && !(blockSize & (blockSize - 1)), "padPkcs7", "blockSize must be a power of 2");
+        // bufferSize must be a power of 2.
+        Q_ASSERT_X(blockSize > 0 && !(blockSize & (blockSize - 1)), "padPkcs7", "bufferSize must be a power of 2");
 
         int padLen = blockSize - (input.size() & (blockSize - 1));
 

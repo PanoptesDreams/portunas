@@ -17,114 +17,58 @@
  */
 
 #include "BinaryStream.h"
+#include <QDataStream>
 #include <QtEndian>
 
 BinaryStream::BinaryStream(QIODevice* device)
     : QObject(device)
-    , m_timeout(-1)
-    , m_device(device)
+    , m_stream(new QDataStream(device))
 {
+    m_stream->setByteOrder(QDataStream::BigEndian);
 }
 
 BinaryStream::BinaryStream(QByteArray* ba, QObject* parent)
     : QObject(parent)
-    , m_timeout(-1)
+    , m_stream(new QDataStream(ba, QIODevice::ReadWrite))
 {
-    m_buffer.reset(new QBuffer(ba));
-    m_buffer->open(QIODevice::ReadWrite);
-
-    m_device = m_buffer.data();
-}
-
-BinaryStream::~BinaryStream()
-{
+    m_stream->setByteOrder(QDataStream::BigEndian);
 }
 
 const QString BinaryStream::errorString() const
 {
-    return m_error;
-}
-
-QIODevice* BinaryStream::device() const
-{
-    return m_device;
-}
-
-void BinaryStream::setTimeout(int timeout)
-{
-    m_timeout = timeout;
-}
-
-bool BinaryStream::read(char* ptr, qint64 size)
-{
-    qint64 pos = 0;
-
-    while (pos < size) {
-        if (m_device->bytesAvailable() == 0) {
-            if (!m_device->waitForReadyRead(m_timeout)) {
-                m_error = m_device->errorString();
-                return false;
-            }
-        }
-
-        qint64 nread = m_device->read(ptr + pos, size - pos);
-
-        if (nread == -1) {
-            m_error = m_device->errorString();
-            return false;
-        }
-
-        pos += nread;
-    }
-
-    return true;
+    return m_stream->device()->errorString();
 }
 
 bool BinaryStream::read(QByteArray& ba)
 {
-    return read(ba.data(), ba.length());
+    return m_stream->readRawData(ba.data(), ba.size()) != -1;
 }
 
 bool BinaryStream::read(quint32& i)
 {
-    if (read(reinterpret_cast<char*>(&i), sizeof(i))) {
-        i = qFromBigEndian<quint32>(i);
-        return true;
-    }
-
-    return false;
+    *m_stream >> i;
+    return true;
 }
 
 bool BinaryStream::read(quint16& i)
 {
-    if (read(reinterpret_cast<char*>(&i), sizeof(i))) {
-        i = qFromBigEndian<quint16>(i);
-        return true;
-    }
-
-    return false;
+    *m_stream >> i;
+    return true;
 }
 
 bool BinaryStream::read(quint8& i)
 {
-    return read(reinterpret_cast<char*>(&i), sizeof(i));
+    *m_stream >> i;
+    return true;
 }
 
 bool BinaryStream::readString(QByteArray& ba)
 {
     quint32 length;
-
-    if (!read(length)) {
-        return false;
-    }
+    *m_stream >> length;
 
     ba.resize(length);
-
-    if (!read(ba.data(), ba.length())) {
-        return false;
-    }
-
-    return true;
+    return m_stream->readRawData(ba.data(), length) != -1;
 }
 
 bool BinaryStream::readString(QString& str)
@@ -139,20 +83,9 @@ bool BinaryStream::readString(QString& str)
     return true;
 }
 
-bool BinaryStream::write(const char* ptr, qint64 size)
-{
-    if (m_device->write(ptr, size) < 0) {
-        m_error = m_device->errorString();
-        return false;
-    }
-
-    return true;
-}
-
 bool BinaryStream::flush()
 {
-    if (!m_device->waitForBytesWritten(m_timeout)) {
-        m_error = m_device->errorString();
+    if (!m_stream->device()->waitForBytesWritten(3000)) {
         return false;
     }
 
@@ -161,36 +94,30 @@ bool BinaryStream::flush()
 
 bool BinaryStream::write(const QByteArray& ba)
 {
-    return write(ba.data(), ba.length());
+    return m_stream->writeRawData(ba.constData(), ba.size()) != -1;
 }
 
 bool BinaryStream::write(quint32 i)
 {
-    i = qToBigEndian<quint32>(i);
-    return write(reinterpret_cast<char*>(&i), sizeof(i));
+    *m_stream << i;
+    return true;
 }
 
 bool BinaryStream::write(quint16 i)
 {
-    i = qToBigEndian<quint16>(i);
-    return write(reinterpret_cast<char*>(&i), sizeof(i));
+    *m_stream << i;
+    return true;
 }
 
 bool BinaryStream::write(quint8 i)
 {
-    return write(reinterpret_cast<char*>(&i), sizeof(i));
+    *m_stream << i;
+    return true;
 }
 
 bool BinaryStream::writeString(const QByteArray& ba)
 {
-    if (!write(static_cast<quint32>(ba.length()))) {
-        return false;
-    }
-
-    if (!write(ba)) {
-        return false;
-    }
-
+    m_stream->writeBytes(ba.data(), ba.size());
     return true;
 }
 
